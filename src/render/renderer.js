@@ -40,10 +40,21 @@ export function createRenderer(canvas, state) {
 
   // 預先 render 食材牌的快取（每種一張，用完就 drawImage）
   const tileCache = new Map();
+  // 暗化版本給被擋住的 back-layer 用。用 source-atop 讓暗化只蓋在 sprite
+  // 不透明處，避免外圍方形 fillRect 把 sprite 圓角外的木紋背景一起壓暗，
+  // 在前景 tile 邊緣露出一圈比背景更暗的「木色框」。
+  const darkTileCache = new Map();
   for (const food of state.config.foodTypes) {
     const off = createOffscreen(TW, TH);
     drawFoodTile(off.ctx, TW, TH, food);
     tileCache.set(food, off.canvas);
+
+    const dark = createOffscreen(TW, TH);
+    drawFoodTile(dark.ctx, TW, TH, food);
+    dark.ctx.globalCompositeOperation = 'source-atop';
+    dark.ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    dark.ctx.fillRect(0, 0, TW, TH);
+    darkTileCache.set(food, dark.canvas);
   }
   const emptyFrame = createOffscreen(TW, TH);
   drawTileFrame(emptyFrame.ctx, TW, TH);
@@ -81,7 +92,7 @@ export function createRenderer(canvas, state) {
     const tilesByLayer = [...state.tiles.values()].sort((a, b) => a.layer - b.layer || a.y - b.y);
     for (const t of tilesByLayer) {
       if (fx.flying.has(t.id)) continue;
-      drawBoardTile(ctx, t, fx, tileCache, boardX, boardY, TW, TH);
+      drawBoardTile(ctx, t, fx, tileCache, darkTileCache, boardX, boardY, TW, TH);
     }
 
     // 待消區的牌（drawSlotTile 內部也會跳過 fx.flying 中的）
@@ -146,14 +157,15 @@ function drawSlotTrack(ctx, x, y, cap, tw, th, shake) {
   ctx.restore();
 }
 
-function drawBoardTile(ctx, tile, fx, tileCache, boardX, boardY, TW, TH) {
+function drawBoardTile(ctx, tile, fx, tileCache, darkTileCache, boardX, boardY, TW, TH) {
   const eff = fx.tileFx.get(tile.id);
   const alpha = eff?.alpha ?? 1;
   if (alpha <= 0.01) return;
   const dx = eff?.dx ?? 0;
   const dy = eff?.dy ?? 0;
   const scale = eff?.scale ?? 1;
-  const sprite = tileCache.get(tile.type);
+  const blocked = tile.blockedBy.size > 0;
+  const sprite = (blocked ? darkTileCache : tileCache).get(tile.type);
   if (!sprite) return;
 
   const px = boardX + tile.x + dx;
@@ -165,11 +177,6 @@ function drawBoardTile(ctx, tile, fx, tileCache, boardX, boardY, TW, TH) {
   ctx.scale(scale, scale);
   ctx.translate(-TW / 2, -TH / 2);
   ctx.drawImage(sprite, 0, 0, TW, TH);
-  // 被擋住的牌 → 暗化
-  if (tile.blockedBy.size > 0) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.fillRect(0, 0, TW, TH);
-  }
   ctx.restore();
 }
 
