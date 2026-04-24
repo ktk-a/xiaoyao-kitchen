@@ -87,23 +87,25 @@ export function drawWoodBackground(ctx, w, h) {
 // ---- Tile 外框（每張牌的底） ----
 
 export function drawTileFrame(ctx, w, h) {
-  // 陰影（畫在 tile 下方）
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-  roundRect(ctx, 2, 4, w - 2, h - 2, 8);
-  ctx.fill();
-
-  // 主體 cream
+  // 主體 cream，鋪滿整個 sprite 不留外框 offset。先用真 shadowBlur 畫一層柔陰影，
+  // 完全包在 body footprint 內，避免之前 offset roundRect 在右/下邊緣留下硬黑條。
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, P.cream);
   grad.addColorStop(1, P.parchment);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 1;
   ctx.fillStyle = grad;
-  roundRect(ctx, 0, 0, w - 2, h - 4, 8);
+  roundRect(ctx, 1, 1, w - 2, h - 2, 8);
   ctx.fill();
+  ctx.restore();
 
   // 內邊框
   ctx.strokeStyle = P.woodLight;
   ctx.lineWidth = 1.5;
-  roundRect(ctx, 2, 2, w - 6, h - 8, 6);
+  roundRect(ctx, 3, 3, w - 6, h - 6, 6);
   ctx.stroke();
 
   // 內角落朱紅小點（古風印章感）
