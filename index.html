@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>逍遙大食堂</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --wood-dark: #3d2a18;
+      --wood-mid: #5c4630;
+      --wood-light: #a07f5a;
+      --cream: #f4e4c1;
+      --parchment: #ede2c4;
+      --seal: #a8442a;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(ellipse at top, #6b5238 0%, #2a1d11 90%);
+      color: var(--cream);
+      font-family: "Noto Serif TC", serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+    }
+    .frame {
+      padding: 24px;
+      border-radius: 12px;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0.18), rgba(0,0,0,0.32)),
+        linear-gradient(180deg, var(--wood-mid), var(--wood-dark));
+      box-shadow:
+        0 0 0 2px rgba(255, 230, 180, 0.18) inset,
+        0 24px 60px rgba(0, 0, 0, 0.55);
+    }
+    canvas#game {
+      display: block;
+      touch-action: none;
+      cursor: pointer;
+    }
+    /* 勝負 modal */
+    #modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(20, 12, 6, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      backdrop-filter: blur(4px);
+    }
+    #modal.open { display: flex; }
+    #modal .card {
+      background: linear-gradient(180deg, var(--cream), var(--parchment));
+      color: var(--wood-dark);
+      border-radius: 14px;
+      padding: 32px 44px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.55), 0 0 0 1.5px var(--wood-light) inset;
+      text-align: center;
+      min-width: 280px;
+    }
+    #modal h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      letter-spacing: 0.05em;
+    }
+    #modal #modal-text {
+      margin: 0 0 20px;
+      font-size: 16px;
+    }
+    #modal button {
+      background: var(--seal);
+      color: var(--cream);
+      border: none;
+      padding: 10px 24px;
+      font-family: inherit;
+      font-size: 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    #modal button:hover { filter: brightness(1.1); }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <canvas id="game"></canvas>
+  </div>
+
+  <div id="modal" role="dialog" aria-modal="true">
+    <div class="card">
+      <h2>本局結束</h2>
+      <p id="modal-text"></p>
+      <button id="restart">重新開始</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
