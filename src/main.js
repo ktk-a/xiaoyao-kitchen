@@ -26,21 +26,68 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 
-// debug：?autoplay=N 會自動照 plan 點 N 步（測試動畫 / 截圖用）
-const autoplayN = Number(new URLSearchParams(location.search).get('autoplay') ?? 0);
+// debug 模式（測試 / 截圖用）
+const params = new URLSearchParams(location.search);
+const autoplayN = Number(params.get('autoplay') ?? 0);
+const loseMode = params.get('lose') === '1';
+const rejectMode = params.get('reject') === '1';
+
 if (autoplayN > 0) {
   let i = 0;
   const tick = () => {
     if (i >= autoplayN || state.status !== 'playing') return;
-    if (!aq.isIdle()) {
-      requestAnimationFrame(tick);
-      return;
-    }
+    if (!aq.isIdle()) { requestAnimationFrame(tick); return; }
     handleClick(state.plan[i]);
     i++;
     setTimeout(tick, 250);
   };
   setTimeout(tick, 600);
+}
+
+if (loseMode) {
+  // 故意挑「跟 slot 裡沒有重複 type」的自由牌 → 把 slot 塞到 7 → lose
+  const tick = () => {
+    if (state.status !== 'playing') return;
+    if (!aq.isIdle()) { requestAnimationFrame(tick); return; }
+    const slotTypes = new Set(state.slot.map((t) => t.type));
+    let target = null;
+    for (const [id, t] of state.tiles) {
+      if (t.blockedBy.size === 0 && !slotTypes.has(t.type)) { target = id; break; }
+    }
+    if (!target) {
+      for (const [id, t] of state.tiles) {
+        if (t.blockedBy.size === 0) { target = id; break; }
+      }
+    }
+    if (target) {
+      handleClick(target);
+      setTimeout(tick, 250);
+    }
+  };
+  setTimeout(tick, 600);
+}
+
+if (rejectMode) {
+  // 找一張被擋住的 tile → 反覆點下去（讓截圖隨時都抓到抖動 + 紅光）
+  setTimeout(() => {
+    let blockedId = null;
+    for (const [id, t] of state.tiles) {
+      if (t.blockedBy.size > 0) { blockedId = id; break; }
+    }
+    if (blockedId) {
+      const bang = () => {
+        if (aq.isIdle()) handleClick(blockedId);
+        setTimeout(bang, 100);
+      };
+      bang();
+    }
+  }, 400);
+}
+
+// ?modal=won|lost：直接秀對應的勝負 modal（截圖驗收用）
+const modalMode = params.get('modal');
+if (modalMode === 'won' || modalMode === 'lost') {
+  setTimeout(() => showModal(modalMode), 300);
 }
 
 function handleClick(tileId) {
