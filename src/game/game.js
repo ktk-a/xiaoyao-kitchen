@@ -1,7 +1,7 @@
 // 對外 API：createGame / pickTile / getStatus。
 // 純 JS、無 DOM、無 Canvas 依賴。frontend 只接 events 做動畫。
 
-import { DEFAULT_CONFIG, validateConfig } from './config.js';
+import { resolveConfig, validateConfig } from './config.js';
 import { generateGame } from './generator.js';
 import { isPickable, removeTileFromBoard } from './board.js';
 import { insertToSlot, findTriple, clearTriple } from './slot.js';
@@ -12,7 +12,7 @@ import { EventType, makeEvent } from './events.js';
  * @returns {import('./types.js').GameState}
  */
 export function createGame(overrides = {}) {
-  const config = { ...DEFAULT_CONFIG, ...overrides };
+  const config = resolveConfig(overrides);
   validateConfig(config);
   const { tiles, plan } = generateGame(config);
   return {

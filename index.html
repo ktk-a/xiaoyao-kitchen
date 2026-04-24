@@ -88,6 +88,71 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.25);
     }
     #modal button:hover { filter: brightness(1.1); }
+
+    /* 難度選單（與 modal 同 style，但獨立 layer） */
+    #picker {
+      position: fixed;
+      inset: 0;
+      background: rgba(20, 12, 6, 0.72);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 12;
+      backdrop-filter: blur(6px);
+      gap: 16px;
+    }
+    #picker.hidden { display: none; }
+    #picker h1 {
+      font-size: 28px;
+      letter-spacing: 0.15em;
+      margin: 0;
+      color: var(--cream);
+      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+    #picker .sub {
+      color: #d8c8a4;
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      margin-bottom: 24px;
+    }
+    #picker .cards { display: flex; gap: 18px; }
+    #picker .card {
+      background: linear-gradient(180deg, var(--cream), var(--parchment));
+      color: var(--wood-dark);
+      border-radius: 14px;
+      padding: 22px 28px 18px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 0 1.5px var(--wood-light) inset;
+      cursor: pointer;
+      min-width: 160px;
+      text-align: center;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+      position: relative;
+    }
+    #picker .card::after {
+      content: '';
+      position: absolute;
+      top: 8px; right: 10px;
+      width: 6px; height: 6px;
+      background: var(--seal);
+      border-radius: 50%;
+    }
+    #picker .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 22px 48px rgba(0,0,0,0.55), 0 0 0 1.5px var(--seal) inset;
+    }
+    #picker .card .label {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      margin-bottom: 8px;
+    }
+    #picker .card .meta {
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      color: #6a4f2e;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -100,6 +165,25 @@
       <h2>本局結束</h2>
       <p id="modal-text"></p>
       <button id="restart">重新開始</button>
+    </div>
+  </div>
+
+  <div id="picker">
+    <h1>逍遙大食堂</h1>
+    <div class="sub">選擇難度</div>
+    <div class="cards">
+      <div class="card" data-difficulty="easy">
+        <div class="label">簡單</div>
+        <div class="meta">36 張 / 5 食材<br/>4 層</div>
+      </div>
+      <div class="card" data-difficulty="normal">
+        <div class="label">普通</div>
+        <div class="meta">54 張 / 7 食材<br/>5 層</div>
+      </div>
+      <div class="card" data-difficulty="hard">
+        <div class="label">困難</div>
+        <div class="meta">90 張 / 9 食材<br/>7 層</div>
+      </div>
     </div>
   </div>
 

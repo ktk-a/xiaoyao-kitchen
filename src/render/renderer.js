@@ -7,7 +7,7 @@ import {
   drawFoodTile,
   PALETTE,
 } from './sprites.js';
-import { BOARD_WIDTH, BOARD_HEIGHT } from '../game/layout.js';
+import { getBoardSize } from '../game/layout.js';
 
 const SLOT_GAP = 24;        // 板子下方到待消區的間距（邏輯點）
 const SLOT_TOP_PAD = 12;    // 待消區上方標籤空間
@@ -22,6 +22,9 @@ export function createRenderer(canvas, state) {
   const ctx = canvas.getContext('2d');
   const { tileWidth: TW, tileHeight: TH, slotCapacity } = state.config;
 
+  const board = getBoardSize(state.config.difficulty, state.config.layoutPreset ?? 'pyramid');
+  const BOARD_WIDTH = board.width;
+  const BOARD_HEIGHT = board.height;
   const slotW = slotCapacity * TW;
   const logicalW = Math.max(BOARD_WIDTH, slotW) + SIDE_PAD * 2;
   const logicalH = TOP_PAD + BOARD_HEIGHT + SLOT_GAP + SLOT_TOP_PAD + TH + 24;

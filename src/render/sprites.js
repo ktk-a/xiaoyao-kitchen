@@ -23,6 +23,12 @@ export const PALETTE = {
   meatFat: '#fae0c8',
   dumpling: '#efd49a',
   dumplingDark: '#b59054',
+  riceLight: '#f8efd6',
+  riceDark: '#d8c69a',
+  riceBand: '#3a4a5a',  // 深色海苔帶
+  eggWhite: '#fbf1d9',
+  eggYolk: '#f3c34a',
+  eggYolkDark: '#c89426',
 };
 
 const P = PALETTE;
@@ -427,6 +433,72 @@ export function drawDumpling(ctx, w, h) {
   });
 }
 
+// rice 飯糰（三角飯糰，海苔帶）
+export function drawRice(ctx, w, h) {
+  withInset(ctx, w, h, (c, iw, ih) => {
+    const cx = iw / 2;
+    const cy = ih / 2 + 4;
+    const tw = iw * 0.7;
+    const th = ih * 0.7;
+    // 三角主體（圓角）
+    c.fillStyle = P.riceLight;
+    c.beginPath();
+    c.moveTo(cx, cy - th * 0.5);
+    c.quadraticCurveTo(cx + tw * 0.55, cy + th * 0.45, cx + tw * 0.42, cy + th * 0.5);
+    c.quadraticCurveTo(cx, cy + th * 0.55, cx - tw * 0.42, cy + th * 0.5);
+    c.quadraticCurveTo(cx - tw * 0.55, cy + th * 0.45, cx, cy - th * 0.5);
+    c.closePath();
+    c.fill();
+    strokeOutline(c, 1.4);
+    // 米粒紋理（散布幾個小橢圓）
+    c.fillStyle = P.riceDark;
+    const dots = [[-0.1, -0.1], [0.12, -0.05], [-0.05, 0.1], [0.08, 0.15], [-0.18, 0.05]];
+    for (const [dx, dy] of dots) {
+      c.beginPath();
+      c.ellipse(cx + tw * dx, cy + th * dy, 1.5, 1, 0.2, 0, Math.PI * 2);
+      c.fill();
+    }
+    // 海苔帶
+    c.fillStyle = P.riceBand;
+    const bandY = cy + th * 0.18;
+    const bandH = th * 0.22;
+    c.fillRect(cx - tw * 0.4, bandY, tw * 0.8, bandH);
+    c.strokeStyle = P.outline;
+    c.lineWidth = 1;
+    c.strokeRect(cx - tw * 0.4, bandY, tw * 0.8, bandH);
+  });
+}
+
+// egg 蛋（俯視荷包蛋：蛋白橢圓 + 蛋黃圓）
+export function drawEgg(ctx, w, h) {
+  withInset(ctx, w, h, (c, iw, ih) => {
+    const cx = iw / 2;
+    const cy = ih / 2 + 2;
+    // 蛋白：不規則橢圓（兩個圓疊一下模擬煎蛋形狀）
+    c.fillStyle = P.eggWhite;
+    c.beginPath();
+    c.ellipse(cx, cy, iw * 0.36, ih * 0.3, 0, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.ellipse(cx + iw * 0.08, cy + ih * 0.05, iw * 0.3, ih * 0.24, 0.3, 0, Math.PI * 2);
+    c.fill();
+    strokeOutline(c, 1.4);
+    // 蛋黃
+    c.fillStyle = P.eggYolk;
+    c.beginPath();
+    c.arc(cx - iw * 0.04, cy - ih * 0.02, iw * 0.16, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = P.eggYolkDark;
+    c.lineWidth = 1;
+    c.stroke();
+    // 蛋黃高光
+    c.fillStyle = 'rgba(255,255,255,0.55)';
+    c.beginPath();
+    c.ellipse(cx - iw * 0.1, cy - ih * 0.1, iw * 0.06, ih * 0.04, -0.4, 0, Math.PI * 2);
+    c.fill();
+  });
+}
+
 export const FOOD_DRAWERS = {
   bowl: drawBowl,
   fish: drawFish,
@@ -435,6 +507,8 @@ export const FOOD_DRAWERS = {
   veggie: drawVeggie,
   meat: drawMeat,
   dumpling: drawDumpling,
+  rice: drawRice,
+  egg: drawEgg,
 };
 
 // 便利：在一個 canvas 上完整畫一張食材牌（背景 frame + 食材）

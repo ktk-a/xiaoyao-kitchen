@@ -31,7 +31,7 @@ function mulberry32(seed) {
  * @returns {{ tiles: Map<string, import('./types.js').Tile>, plan: string[] }}
  */
 export function generateGame(config) {
-  const layout = buildLayout();
+  const layout = buildLayout(config.difficulty, config.layoutPreset ?? 'pyramid');
   if (layout.length !== config.tileCount) {
     throw new Error(`layout has ${layout.length} slots but tileCount=${config.tileCount}`);
   }

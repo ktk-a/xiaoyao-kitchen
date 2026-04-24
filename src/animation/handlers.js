@@ -14,33 +14,34 @@ const T_REJECT = 250;
  * @param {import('../game/types.js').GameEvent[]} events
  * @param {ReturnType<typeof import('./queue.js').createAnimQueue>} aq
  * @param {import('../game/types.js').GameState} state
- * @param {{ slotX: number, slotY: number, TW: number, TH: number }} coords
+ * @param {{ boardX:number, boardY:number, slotX: number, slotY: number, TW: number, TH: number }} coords
  * @param {() => number} now
+ * @param {(id: string) => any} tileLookup  pickTile 之前捕捉的 tile 快照（含已被消除的）
  */
-export function scheduleEvents(events, aq, state, coords, now) {
+export function scheduleEvents(events, aq, state, coords, now, tileLookup) {
   let cursor = now();
 
   for (const ev of events) {
-    const dt = handleOne(ev, aq, state, coords, cursor);
+    const dt = handleOne(ev, aq, state, coords, cursor, tileLookup);
     cursor += dt;
   }
   return cursor;
 }
 
-function handleOne(ev, aq, state, coords, t0) {
+function handleOne(ev, aq, state, coords, t0, tileLookup) {
   const { type, payload } = ev;
   switch (type) {
-    case EventType.TilePicked: return onTilePicked(payload, aq, state, coords, t0);
+    case EventType.TilePicked: return onTilePicked(payload, aq, state, coords, t0, tileLookup);
     case EventType.TileUnblocked: return onTileUnblocked(payload, aq, state, t0);
-    case EventType.SlotInserted: return onSlotInserted(payload, aq, state, coords, t0);
-    case EventType.MatchCleared: return onMatchCleared(payload, aq, state, t0);
+    case EventType.SlotInserted: return onSlotInserted(payload, aq, state, coords, t0, tileLookup);
+    case EventType.MatchCleared: return onMatchCleared(payload, aq, state, coords, t0, tileLookup);
     case EventType.SlotShifted: return onSlotShifted(payload, aq, state, coords, t0);
     case EventType.StatusChanged: return 0;
     default: return 0;
   }
 }
 
-function onTilePicked({ tileId, blocked, blockedBy }, aq, state, coords, t0) {
+function onTilePicked({ tileId, blocked, blockedBy }, aq, state, coords, t0, tileLookup) {
   if (blocked) {
     // 拒絕：tile 抖動 + 紅光 flash（仍走 tileFx，因為被拒絕的 tile 留在 board）
     const tile = state.tiles.get(tileId);
@@ -70,9 +71,10 @@ function onTilePicked({ tileId, blocked, blockedBy }, aq, state, coords, t0) {
   }
   // 正常 pick：把 tile 快照塞 fx.flying，從 board 位置開始 lift（scale up + 少許上抬）
   // 之後 onSlotInserted 接手做 board → slot 的 fly。
-  // 注意：此時 state.tiles 已經把 tile 拿掉了（pickTile 是同步的），所以要從 slot 找回 tile snapshot。
-  const tile = state.slot[state.slot.length - 1];
-  if (!tile || tile.id !== tileId) return T_PICK; // 防呆
+  // 用 tileLookup（pickTile 前的 snapshot），因為 state.slot 可能已被 clearTriple 清掉
+  // （第 3 張湊成三同的瞬間）→ 從 state.slot[last] 拿不到。
+  const tile = tileLookup(tileId);
+  if (!tile) return T_PICK;
   const startX = coords.boardX + tile.x;
   const startY = coords.boardY + tile.y;
   // 立即在 fx.flying 寫入起始狀態（**這是 jitter bug 的關鍵**：
@@ -119,10 +121,11 @@ function onTileUnblocked({ tileIds }, aq, state, t0) {
   return 0;
 }
 
-function onSlotInserted({ tileId, slotIndex }, aq, state, coords, t0) {
+function onSlotInserted({ tileId, slotIndex }, aq, state, coords, t0, tileLookup) {
   // 從 fx.flying 的當前位置（board + lift）一條 path 飛到 slot 目標位置。
   // 完成後從 flying 移除 → slot 真實 state 接手畫。
-  const tile = findTileAnywhere(state, tileId);
+  // 用 tileLookup 因為這張 tile 可能立刻就被 clearTriple 拿掉了（第 3 張同 type 的瞬間）。
+  const tile = tileLookup(tileId);
   if (!tile) return 0;
   const targetX = coords.slotX + slotIndex * coords.TW;
   const targetY = coords.slotY;
@@ -152,20 +155,50 @@ function onSlotInserted({ tileId, slotIndex }, aq, state, coords, t0) {
   return T_INSERT;
 }
 
-function onMatchCleared({ tileIds, slotIndices }, aq, state, t0) {
-  // 三張同時 flash 後淡出
+function onMatchCleared({ tileIds, slotIndices }, aq, state, coords, t0, tileLookup) {
+  // 三張被消除的 tile 已經從 state.slot 拿掉了 → 只能從 tileLookup 拿快照。
+  // 用 fx.flying 渲染（在 slot 位置淡出 + 上飄）；fx.flying 已經是 absolute coord，正合用。
+  const tiles = tileIds.map((id) => tileLookup(id)).filter(Boolean);
+  if (tiles.length === 0) return 0;
+
+  // 確保進入 fade tween 時 flying 已存在（onSlotInserted 對「剛飛到 slot 的第 3 張」會 onDone 把 flying 刪除，
+  // 我們在這裡把它加回去；前 2 張本來就沒在 flying，要新建）
+  aq.push({
+    start: t0,
+    dur: 1, // 這是個 setup-only tween：在 t0 把 fade 起點塞進 flying，不做插值
+    apply(t, fx) {
+      tiles.forEach((tile, i) => {
+        const slotIdx = slotIndices[i];
+        const fly = ensureFlying(
+          fx,
+          tile.id,
+          tile,
+          coords.slotX + slotIdx * coords.TW,
+          coords.slotY,
+        );
+        fly.x = coords.slotX + slotIdx * coords.TW;
+        fly.y = coords.slotY;
+        fly.alpha = 1;
+        fly.scale = 1;
+      });
+    },
+  });
+  // 真正的淡出 tween：alpha 1 → 0 + 上飄
   aq.push({
     start: t0,
     dur: T_MATCH,
+    ease: 'outCubic',
     apply(t, fx) {
-      for (const id of tileIds) {
-        const eff = ensureSlotFx(fx, id);
-        eff.alpha = 1 - t;
-        eff.dy = -8 * t;
-      }
+      tiles.forEach((tile, i) => {
+        const fly = fx.flying.get(tile.id);
+        if (!fly) return;
+        fly.alpha = 1 - t;
+        fly.y = coords.slotY - 12 * t;
+        fly.scale = 1 + 0.2 * t;
+      });
     },
     onDone(fx) {
-      for (const id of tileIds) fx.slotFx.delete(id);
+      for (const tile of tiles) fx.flying.delete(tile.id);
       fx.flashes.push({ kind: 'matchFlash', slotIndices, startMs: t0, durMs: T_MATCH + 100 });
     },
   });

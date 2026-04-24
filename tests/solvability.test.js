@@ -1,30 +1,32 @@
 // 1000 種子可解性壓測：每個種子用 createGame 產生牌局，照 plan 順序點下去，必須通關。
 
 import { test, expect } from 'bun:test';
-import { createGame, pickTile, getStatus } from '../src/game/index.js';
+import { createGame, pickTile, getStatus, DIFFICULTIES } from '../src/game/index.js';
 
 const SEED_COUNT = 1000;
 
-test(`1000 random seeds all solvable via generated plan`, () => {
-  const failures = [];
-  for (let seed = 1; seed <= SEED_COUNT; seed++) {
-    const state = createGame({ seed });
-    for (const tileId of state.plan) {
-      const r = pickTile(state, tileId);
-      if (!r.ok) {
-        failures.push({ seed, tileId, reason: r.reason });
-        break;
+for (const difficultyKey of Object.keys(DIFFICULTIES)) {
+  test(`${difficultyKey}: 1000 random seeds all solvable via generated plan`, () => {
+    const failures = [];
+    for (let seed = 1; seed <= SEED_COUNT; seed++) {
+      const state = createGame({ seed, difficulty: difficultyKey });
+      for (const tileId of state.plan) {
+        const r = pickTile(state, tileId);
+        if (!r.ok) {
+          failures.push({ seed, tileId, reason: r.reason });
+          break;
+        }
+      }
+      if (getStatus(state) !== 'won') {
+        failures.push({ seed, status: getStatus(state), slotLen: state.slot.length });
       }
     }
-    if (getStatus(state) !== 'won') {
-      failures.push({ seed, status: getStatus(state), slotLen: state.slot.length });
+    if (failures.length > 0) {
+      console.error(`${difficultyKey} first 5 failures:`, failures.slice(0, 5));
     }
-  }
-  if (failures.length > 0) {
-    console.error('first 5 failures:', failures.slice(0, 5));
-  }
-  expect(failures.length).toBe(0);
-});
+    expect(failures.length).toBe(0);
+  });
+}
 
 test(`pickTile on blocked tile returns ok:false reason:blocked`, () => {
   const state = createGame({ seed: 42 });
