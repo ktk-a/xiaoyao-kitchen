@@ -11,23 +11,47 @@ const modal = document.getElementById('modal');
 const modalText = document.getElementById('modal-text');
 const restartBtn = document.getElementById('restart');
 
-let state = createGame();
+const seedParam = new URLSearchParams(location.search).get('seed');
+const initialSeed = seedParam ? Number(seedParam) : undefined;
+let state = createGame(initialSeed !== undefined ? { seed: initialSeed } : undefined);
 let renderer = createRenderer(canvas, state);
 let aq = createAnimQueue(renderer.fx);
 
 bindClick(canvas, state, renderer.coords, handleClick);
 restartBtn.addEventListener('click', restart);
 
-// 主迴圈
-function loop(now) {
+const params = new URLSearchParams(location.search);
+
+// ?freeze=Tms&pickN=N — debug：同步點 N 張、把動畫時鐘推到 Tms、畫一幀就停。
+//   給 headless 截圖用：在動畫中段（如 alpha pop 時刻）拍 deterministic 截圖。
+const freezeMs = Number(params.get('freeze') ?? -1);
+const pickN = Number(params.get('pickN') ?? 1);
+if (freezeMs >= 0) {
+  let virtualNow = 0;
+  aq = createAnimQueue(renderer.fx, () => virtualNow);
+  for (let i = 0; i < pickN; i++) {
+    const id = state.plan[i];
+    const r = pickTile(state, id);
+    scheduleEvents(r.events, aq, state, renderer.coords, () => virtualNow);
+    // 假設每張 pick + insert ~360ms，先把 cursor 推到 i+1 張的起點
+    virtualNow += 360;
+  }
+  // 最後再把 virtualNow 設成想凍的時刻（相對於最後一次 click）
+  virtualNow = (pickN - 1) * 360 + freezeMs;
   aq.step();
-  renderer.frame(now);
+  renderer.frame(virtualNow);
+  // 不再 rAF，畫面就這麼凍住
+} else {
+  // 正常主迴圈
+  function loop(now) {
+    aq.step();
+    renderer.frame(now);
+    requestAnimationFrame(loop);
+  }
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
 
 // debug 模式（測試 / 截圖用）
-const params = new URLSearchParams(location.search);
 const autoplayN = Number(params.get('autoplay') ?? 0);
 const loseMode = params.get('lose') === '1';
 const rejectMode = params.get('reject') === '1';

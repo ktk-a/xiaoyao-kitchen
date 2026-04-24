@@ -59,6 +59,7 @@ export function createRenderer(canvas, state) {
   const fx = {
     tileFx: new Map(),
     slotFx: new Map(),
+    flying: new Map(),     // 正在飛行（board → slot）的 tile，渲染由它接管
     flashes: [],
     slotShake: 0,
   };
@@ -73,16 +74,22 @@ export function createRenderer(canvas, state) {
     drawHeader(ctx, logicalW, state);
     drawSlotTrack(ctx, slotX, slotY, slotCapacity, TW, TH, fx.slotShake);
 
-    // 板子的牌：低 layer 先畫
+    // 板子的牌：低 layer 先畫；飛行中的 tile 跳過（已不在 state.tiles 但仍可能在 fx.flying）
     const tilesByLayer = [...state.tiles.values()].sort((a, b) => a.layer - b.layer || a.y - b.y);
     for (const t of tilesByLayer) {
+      if (fx.flying.has(t.id)) continue;
       drawBoardTile(ctx, t, fx, tileCache, boardX, boardY, TW, TH);
     }
 
-    // 待消區的牌
+    // 待消區的牌（drawSlotTile 內部也會跳過 fx.flying 中的）
     state.slot.forEach((t, i) => {
       drawSlotTile(ctx, t, i, fx, tileCache, slotX, slotY, TW, TH);
     });
+
+    // 飛行中的 tile：在所有 board / slot 之上畫（從 board 飛到 slot 的中段）
+    for (const fly of fx.flying.values()) {
+      drawFlyingTile(ctx, fly, tileCache, TW, TH);
+    }
 
     // flashes（在所有 tile 上層）
     for (const f of fx.flashes) drawFlash(ctx, f, nowMs, boardX, boardY, slotX, slotY, TW, TH);
@@ -164,6 +171,8 @@ function drawBoardTile(ctx, tile, fx, tileCache, boardX, boardY, TW, TH) {
 }
 
 function drawSlotTile(ctx, tile, index, fx, tileCache, slotX, slotY, TW, TH) {
+  // 飛行中的 tile 不在這裡畫（由 drawFlyingTiles 接手），避免雙畫
+  if (fx.flying.has(tile.id)) return;
   const eff = fx.slotFx.get(tile.id);
   const alpha = eff?.alpha ?? 1;
   if (alpha <= 0.01) return;
@@ -171,13 +180,26 @@ function drawSlotTile(ctx, tile, index, fx, tileCache, slotX, slotY, TW, TH) {
   const dy = eff?.dy ?? 0;
   const sprite = tileCache.get(tile.type);
   if (!sprite) return;
-  // 動畫期間 indexOverride 用來覆蓋目標 index
   const renderIndex = eff?.indexOverride ?? index;
   const px = slotX + renderIndex * TW + dx;
   const py = slotY + dy;
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.drawImage(sprite, px, py, TW, TH);
+  ctx.restore();
+}
+
+function drawFlyingTile(ctx, fly, tileCache, TW, TH) {
+  const sprite = tileCache.get(fly.tile.type);
+  if (!sprite) return;
+  const alpha = fly.alpha ?? 1;
+  const scale = fly.scale ?? 1;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(fly.x + TW / 2, fly.y + TH / 2);
+  ctx.scale(scale, scale);
+  ctx.translate(-TW / 2, -TH / 2);
+  ctx.drawImage(sprite, 0, 0, TW, TH);
   ctx.restore();
 }
 
@@ -238,6 +260,7 @@ function cullExpired(fx, nowMs) {
  * @typedef {Object} RenderState
  * @property {Map<string, {dx?: number, dy?: number, alpha?: number, scale?: number, indexOverride?: number}>} tileFx
  * @property {Map<string, {dx?: number, dy?: number, alpha?: number, indexOverride?: number}>} slotFx
+ * @property {Map<string, {tile: any, x: number, y: number, alpha?: number, scale?: number}>} flying
  * @property {Array<any>} flashes
  * @property {number} slotShake
  */

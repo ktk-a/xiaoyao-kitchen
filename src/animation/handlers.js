@@ -30,9 +30,9 @@ export function scheduleEvents(events, aq, state, coords, now) {
 function handleOne(ev, aq, state, coords, t0) {
   const { type, payload } = ev;
   switch (type) {
-    case EventType.TilePicked: return onTilePicked(payload, aq, state, t0);
+    case EventType.TilePicked: return onTilePicked(payload, aq, state, coords, t0);
     case EventType.TileUnblocked: return onTileUnblocked(payload, aq, state, t0);
-    case EventType.SlotInserted: return onSlotInserted(payload, aq, state, t0);
+    case EventType.SlotInserted: return onSlotInserted(payload, aq, state, coords, t0);
     case EventType.MatchCleared: return onMatchCleared(payload, aq, state, t0);
     case EventType.SlotShifted: return onSlotShifted(payload, aq, state, coords, t0);
     case EventType.StatusChanged: return 0;
@@ -40,9 +40,9 @@ function handleOne(ev, aq, state, coords, t0) {
   }
 }
 
-function onTilePicked({ tileId, blocked }, aq, state, t0) {
+function onTilePicked({ tileId, blocked, blockedBy }, aq, state, coords, t0) {
   if (blocked) {
-    // 拒絕：tile 抖動 + 紅光 flash
+    // 拒絕：tile 抖動 + 紅光 flash（仍走 tileFx，因為被拒絕的 tile 留在 board）
     const tile = state.tiles.get(tileId);
     if (!tile) return 0;
     aq.push({
@@ -68,24 +68,39 @@ function onTilePicked({ tileId, blocked }, aq, state, t0) {
     });
     return T_REJECT;
   }
-  // 正常 pick：tile lift + slight scale up + start fade
+  // 正常 pick：把 tile 快照塞 fx.flying，從 board 位置開始 lift（scale up + 少許上抬）
+  // 之後 onSlotInserted 接手做 board → slot 的 fly。
+  // 注意：此時 state.tiles 已經把 tile 拿掉了（pickTile 是同步的），所以要從 slot 找回 tile snapshot。
+  const tile = state.slot[state.slot.length - 1];
+  if (!tile || tile.id !== tileId) return T_PICK; // 防呆
+  const startX = coords.boardX + tile.x;
+  const startY = coords.boardY + tile.y;
+  // 立即在 fx.flying 寫入起始狀態（**這是 jitter bug 的關鍵**：
+  //   不能等 tween 第一次 apply 才寫入，否則 frame 1 還沒有 flying entry，
+  //   slot 那邊的 real-state 渲染會先閃出滿 alpha 的 tile）
   aq.push({
     start: t0,
     dur: T_PICK,
     ease: 'outCubic',
     apply(t, fx) {
-      const eff = ensureTileFx(fx, tileId);
-      eff.dy = -8 * t;
-      eff.scale = 1 + 0.12 * t;
-      eff.alpha = 1 - 0.3 * t;
-    },
-    onDone(fx) {
-      // 待會 SlotInserted 會接手把 tile 移到 slot；先讓 board 上保留低透明度殘影
-      const eff = ensureTileFx(fx, tileId);
-      eff.alpha = 0; // 從 board 消失，讓 slot 那邊的 tween 接走
+      const fly = ensureFlying(fx, tileId, tile, startX, startY);
+      fly.x = startX;
+      fly.y = startY - 10 * t;
+      fly.scale = 1 + 0.1 * t;
+      fly.alpha = 1;
     },
   });
+  // 同步寫初始狀態（tween 還沒跑就先讓 flying 接管渲染，避免 slot 那邊閃滿 alpha）
   return T_PICK;
+}
+
+function ensureFlying(fx, tileId, tile, x, y) {
+  let fly = fx.flying.get(tileId);
+  if (!fly) {
+    fly = { tile, x, y, alpha: 1, scale: 1 };
+    fx.flying.set(tileId, fly);
+  }
+  return fly;
 }
 
 function onTileUnblocked({ tileIds }, aq, state, t0) {
@@ -104,29 +119,34 @@ function onTileUnblocked({ tileIds }, aq, state, t0) {
   return 0;
 }
 
-function onSlotInserted({ tileId, slotIndex }, aq, state, t0) {
-  // 視覺上 tile 從 board 位置「飛」到 slot 位置 → tween slotFx 的 dx/dy/alpha
-  // 由於 game state 已經把 tile 從 tiles map 移除，我們需要用 tile 的最後位置做起始
+function onSlotInserted({ tileId, slotIndex }, aq, state, coords, t0) {
+  // 從 fx.flying 的當前位置（board + lift）一條 path 飛到 slot 目標位置。
+  // 完成後從 flying 移除 → slot 真實 state 接手畫。
   const tile = findTileAnywhere(state, tileId);
   if (!tile) return 0;
-  // 起始 fx：tile 從 board 的位置出現在 slot 上方
+  const targetX = coords.slotX + slotIndex * coords.TW;
+  const targetY = coords.slotY;
+  let captured = null; // tween 第一次 apply 才捕獲起點，避免 schedule 時取錯
   aq.push({
     start: t0,
     dur: T_INSERT,
     ease: 'outCubic',
     apply(t, fx) {
-      const eff = ensureSlotFx(fx, tileId);
-      // 起始位置用 board 偏移（負的 dx/dy 從 slot 方向回推 board 的相對位置）
-      // 簡化：tile 從 slot 上方掉下來，dy 由 -40 → 0；alpha 0 → 1
-      eff.dy = -40 * (1 - t);
-      eff.alpha = t;
+      const fly = ensureFlying(
+        fx,
+        tileId,
+        tile,
+        coords.boardX + tile.x,  // fallback 起點：board 原位（理論上 onTilePicked 已建好）
+        coords.boardY + tile.y,
+      );
+      if (!captured) captured = { x: fly.x, y: fly.y, scale: fly.scale ?? 1 };
+      fly.x = captured.x + (targetX - captured.x) * t;
+      fly.y = captured.y + (targetY - captured.y) * t;
+      fly.scale = captured.scale + (1 - captured.scale) * t;
+      fly.alpha = 1;
     },
     onDone(fx) {
-      const eff = fx.slotFx.get(tileId);
-      if (eff) {
-        eff.dy = 0;
-        eff.alpha = 1;
-      }
+      fx.flying.delete(tileId);
     },
   });
   return T_INSERT;
