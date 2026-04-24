@@ -1,6 +1,13 @@
 // 牌面位置：固定座標（邏輯座標、左上原點、+x 右、+y 下）。
 // 每個 (preset × difficulty) 組合是一張靜態 layer-shape 表。
-// 之後 ③ 加新 preset 直接擴 LAYOUT_SHAPES 即可。
+//
+// Layer shape spec 兩種寫法：
+//   ① rect:    [cols, rows, xOff, yOff]
+//      → 從 (xOff, yOff) 開始畫 cols × rows 的矩形 grid
+//   ② rhombus: { rh: number[], xCenter, yStart }
+//      → 多行不等寬，每行中心對齊 xCenter，第 i 行有 rh[i] 張、y = yStart + i*TILE
+//
+// pyramid / butterfly 用 rect；diamond 用 rhombus 在同 Y 區疊層做菱形剪影 + 立體遮擋。
 
 /**
  * @typedef {Object} LayoutSlot
@@ -10,14 +17,10 @@
  */
 
 const TILE = 64; // 與 config.tileWidth/tileHeight 對齊
+const HALF = TILE / 2;
 
-// layer-shape 簡寫：[cols, rows, xOff, yOff]
-// xOff/yOff 是該 layer 第一張 tile 的左上邏輯座標
-// 高 layer 通常 inset + offset 半張，產生對下層的遮擋
-// 每個 preset × difficulty 都是「layer shapes」陣列：[cols, rows, xOff, yOff]
-// xOff / yOff 是該 layer 第一張 tile 的左上邏輯座標（單位：邏輯點）
 const LAYOUT_SHAPES = {
-  // --- pyramid: 經典中央金字塔，每層越上越窄越靠中 ---
+  // --- pyramid: 經典中央金字塔 ---
   pyramid: {
     easy: [
       [4, 3, 0, 0],     // 12
@@ -43,33 +46,33 @@ const LAYOUT_SHAPES = {
     ],
   },
 
-  // --- diamond: 寬底寬頂、中間更寬，菱形剪影感 ---
+  // --- diamond: 菱形剪影 + 同 Y 區疊層（pyramid-style 立體感） ---
   diamond: {
-    easy: [
-      [4, 2, 0, 0],     // 8  底層窄
-      [5, 2, -32, 64],  // 10 中下層寬
-      [5, 2, -32, 128], // 10 中上層寬
-      [4, 2, 0, 192],   // 8  頂層窄  → 形成菱形剪影
+    easy: [   // 36
+      { rh: [2, 4, 4, 2], xCenter: 128, yStart: 0 },     // 12  L0 底層菱形
+      { rh: [3, 4, 3],    xCenter: 128, yStart: 32 },    // 10  L1 inset 半張
+      { rh: [3, 3, 2],    xCenter: 128, yStart: 64 },    //  8  L2
+      { rh: [3, 3],       xCenter: 128, yStart: 96 },    //  6  L3 頂層
     ],
-    normal: [
-      [5, 2, 0, 0],     // 10
-      [7, 2, -64, 64],  // 14 寬肩
-      [7, 2, -64, 128], // 14 寬肩
-      [5, 2, 0, 192],   // 10
-      [3, 2, 64, 96],   // 6  中央懸浮小塊（最高 layer）
+    normal: [  // 54
+      { rh: [2, 4, 4, 2],    xCenter: 192, yStart: 0 },   // 12  L0
+      { rh: [3, 4, 4, 3],    xCenter: 192, yStart: 32 },  // 14  L1（最寬中間）
+      { rh: [3, 3, 3, 3],    xCenter: 192, yStart: 64 },  // 12  L2
+      { rh: [2, 3, 3, 2],    xCenter: 192, yStart: 96 },  // 10  L3
+      { rh: [3, 3],          xCenter: 192, yStart: 128 }, //  6  L4 頂層小塊
     ],
-    hard: [
-      [6, 2, 0, 0],     // 12
-      [8, 2, -64, 64],  // 16
-      [10, 2, -128, 128], // 20 最寬
-      [8, 2, -64, 192], // 16
-      [6, 2, 0, 256],   // 12
-      [4, 2, 64, 128],  // 8 中央 layer 5
-      [3, 2, 96, 160],  // 6 中央 layer 6
+    hard: [   // 90
+      { rh: [3, 5, 5, 3], xCenter: 256, yStart: 0 },      // 16  L0
+      { rh: [4, 5, 5, 4], xCenter: 256, yStart: 32 },     // 18  L1（最寬）
+      { rh: [3, 4, 4, 3], xCenter: 256, yStart: 64 },     // 14  L2
+      { rh: [3, 4, 4, 3], xCenter: 256, yStart: 96 },     // 14  L3
+      { rh: [3, 4, 3],    xCenter: 256, yStart: 128 },    // 10  L4
+      { rh: [3, 3, 3],    xCenter: 256, yStart: 160 },    //  9  L5
+      { rh: [3, 3, 3],    xCenter: 256, yStart: 192 },    //  9  L6
     ],
   },
 
-  // --- butterfly: 左右兩坨對稱，中央懸浮一小塊 ---
+  // --- butterfly: 左右兩翼 + 中央連接 ---
   butterfly: {
     easy: [
       [3, 2, 0, 32],     // 6  左翼
@@ -80,12 +83,12 @@ const LAYOUT_SHAPES = {
       [3, 2, 64, 160],   // 6  中央下層
     ],
     normal: [
-      [3, 3, 0, 0],      // 9  左翼 base
-      [3, 3, 256, 0],    // 9  右翼 base
-      [4, 2, 32, 32],    // 8  左 layer 2
-      [4, 2, 224, 32],   // 8  右 layer 2
-      [3, 2, 64, 64],    // 6  左 layer 3
-      [3, 2, 256, 64],   // 6  右 layer 3
+      [3, 3, 0, 0],      // 9  左翼底
+      [3, 3, 256, 0],    // 9  右翼底
+      [4, 2, 32, 32],    // 8  左 L1
+      [4, 2, 224, 32],   // 8  右 L1
+      [3, 2, 64, 64],    // 6  左 L2
+      [3, 2, 256, 64],   // 6  右 L2
       [4, 2, 160, 96],   // 8  中央連接
     ],
     hard: [
@@ -97,17 +100,13 @@ const LAYOUT_SHAPES = {
       [3, 3, 320, 64],   // 9  右 L2
       [3, 2, 96, 96],    // 6  左 L3
       [3, 2, 320, 96],   // 6  右 L3
-      [4, 3, 192, 32],   // 12 中央連接（覆蓋左右）
+      [4, 3, 192, 32],   // 12 中央連接
     ],
   },
 };
 
 export const LAYOUT_PRESET_KEYS = Object.keys(LAYOUT_SHAPES);
 
-/**
- * 隨機挑一個 preset（同難度）。傳 seed-derived random 進來保證重現性。
- * @param {() => number} rand
- */
 export function pickRandomPreset(rand = Math.random) {
   const idx = Math.floor(rand() * LAYOUT_PRESET_KEYS.length);
   return LAYOUT_PRESET_KEYS[idx];
@@ -125,18 +124,31 @@ export function buildLayout(difficulty, presetKey = 'pyramid') {
   if (!shapes) throw new Error(`preset "${presetKey}" missing shape for difficulty "${difficulty.key}"`);
 
   const slots = [];
-  shapes.forEach(([cols, rows, xOff, yOff], layerIdx) => {
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        slots.push({
-          x: xOff + col * TILE,
-          y: yOff + row * TILE,
-          layer: layerIdx,
-        });
+  shapes.forEach((spec, layerIdx) => {
+    if (Array.isArray(spec)) {
+      const [cols, rows, xOff, yOff] = spec;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          slots.push({ x: xOff + col * TILE, y: yOff + row * TILE, layer: layerIdx });
+        }
       }
+    } else if (spec.rh) {
+      // rhombus 行：每行 count 張，中心對齊 xCenter；count 偶數時兩側剛好半張位移
+      spec.rh.forEach((count, rowIdx) => {
+        const rowWidth = count * TILE;
+        const xStart = spec.xCenter - rowWidth / 2;
+        for (let col = 0; col < count; col++) {
+          slots.push({
+            x: xStart + col * TILE,
+            y: spec.yStart + rowIdx * TILE,
+            layer: layerIdx,
+          });
+        }
+      });
     }
   });
-  // 正規化：把所有座標平移成 minX = minY = 0（因為某些 preset 用負 xOff）
+
+  // 正規化：把所有座標平移成 minX = minY = 0
   let minX = Infinity, minY = Infinity;
   for (const s of slots) {
     if (s.x < minX) minX = s.x;
@@ -150,7 +162,6 @@ export function buildLayout(difficulty, presetKey = 'pyramid') {
 }
 
 /**
- * 給 renderer 算出板子需要的邏輯尺寸（含所有 preset / difficulty 組合的最大值）
  * @param {{ key: string }} difficulty
  * @param {string} [presetKey]
  */
