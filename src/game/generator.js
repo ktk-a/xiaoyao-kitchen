@@ -10,7 +10,7 @@
 // 為什麼一定可解：玩家只要照生成器決定的順序點，就會把 3 張同 type 連續放進待消區，
 // 立即湊齊三同 → 待消區任一刻最多 3 張 → 永遠不會塞滿 7 格。
 
-import { buildLayout } from './layout.js';
+import { buildLayout, pickRandomPreset } from './layout.js';
 import { computeBlocking } from './board.js';
 
 // mulberry32：種子 → 0~1 的偽隨機，純函式、可重現。
@@ -31,12 +31,14 @@ function mulberry32(seed) {
  * @returns {{ tiles: Map<string, import('./types.js').Tile>, plan: string[] }}
  */
 export function generateGame(config) {
-  const layout = buildLayout(config.difficulty, config.layoutPreset ?? 'pyramid');
-  if (layout.length !== config.tileCount) {
-    throw new Error(`layout has ${layout.length} slots but tileCount=${config.tileCount}`);
-  }
   const seed = config.seed ?? Date.now();
   const rand = mulberry32(seed);
+  // preset：明確指定就用，否則同難度隨機挑（同種子可重現）
+  const preset = config.layoutPreset ?? pickRandomPreset(rand);
+  const layout = buildLayout(config.difficulty, preset);
+  if (layout.length !== config.tileCount) {
+    throw new Error(`layout "${preset}" has ${layout.length} slots but tileCount=${config.tileCount}`);
+  }
 
   const tiles = new Map();
   for (let i = 0; i < layout.length; i++) {

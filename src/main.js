@@ -49,6 +49,8 @@ function startGame(difficultyKey) {
 
   const overrides = { difficulty: difficultyKey };
   if (initialSeed !== undefined) overrides.seed = initialSeed;
+  const presetParam = params.get('preset');
+  if (presetParam) overrides.layoutPreset = presetParam;
   state = createGame(overrides);
   renderer = createRenderer(canvas, state);
   aq = createAnimQueue(renderer.fx);
